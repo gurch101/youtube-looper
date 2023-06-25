@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Youtube Looper</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+      function onYouTubeIframeAPIReady() {}
+
+      function generateUID() {
+        // I generate the UID from two parts here
+        // to ensure the random number provide enough bits.
+        var firstPart = (Math.random() * 46656) | 0;
+        var secondPart = (Math.random() * 46656) | 0;
+        firstPart = ("000" + firstPart.toString(36)).slice(-3);
+        secondPart = ("000" + secondPart.toString(36)).slice(-3);
+        return firstPart + secondPart;
+      }
+
+      document.addEventListener("alpine:init", () => {
+        Alpine.data("videoModal", () => ({
+          videoModalTitle: "Add A Video",
+          videoId: "",
+          videoUrl: "",
+          videoTitle: "",
+          editMode: false,
+          invalidVideoUrl: false,
+          invalidVideoTitle: false,
+          get invalid() {
+            return this.invalidVideoTitle || this.invalidVideoUrl;
+          },
+          init() {
+            Alpine.effect(() => {
+              const video = Alpine.store("app").videoToEdit;
+              if (video === null) {
+                this.videoId = "";
+                this.videoUrl = "";
+                this.videoTitle = "";
+                this.videoModalTitle = "Add A Video";
+                this.editMode = false;
+              } else {
+                this.videoId = video.id;
+                this.videoUrl = video.url;
+                this.videoTitle = video.title;
+                this.videoModalTitle = "Edit Video";
+                this.editMode = true;
+              }
+            });
+          },
+          validate() {
+            this.invalidVideoUrl = false;
+            this.invalidVideoTitle = false;
+            let regex =
+              /[?&]v=([^&#]*)|youtu.be\/([^&#]*)|^\/v\/([^&#]*)|^\/embed\/([^&#]*)|^\/v=([^&#]*)|\/v\/([^&#]*)|embed\/([^&#]*)/;
+            let match = this.videoUrl.match(regex);
+
+            if (match && match.length >= 2) {
+              this.videoId =
+                match[1] ||
+                match[2] ||
+                match[3] ||
+                match[4] ||
+                match[5] ||
+                match[6] ||
+                match[7];
+            }
+
+            if (this.videoId === "") {
+              this.invalidVideoUrl = true;
+            }
+
+            if (this.videoTitle === "") {
+              this.invalidVideoTitle = true;
+            }
+
+            return !this.invalid;
+          },
+          addVideo() {
+            if (!this.validate()) {
+              return;
+            }
+
+            this.$store.app.addVideo({
+              id: this.videoId,
+              title: this.videoTitle,
+              url: this.videoUrl,
+              loops: [],
+            });
+            this.closeModal();
+          },
+          editVideo() {
+            if (!this.validate()) {
+              return;
+            }
+
+            this.$store.app.updateVideo({
+              id: this.videoId,
+              title: this.videoTitle,
+              url: this.videoUrl,
+            });
+            this.closeModal();
+          },
+          closeModal() {
+            this.videoId = "";
+            this.videoUrl = "";
+            this.videoTitle = "";
+            this.invalidVideoTitle = false;
+            this.invalidVideoUrl = false;
+
+            const videoModal = bootstrap.Modal.getInstance(
+              document.getElementById("videoModal")
+            );
+            videoModal.hide();
+          },
+        }));
+
+        Alpine.data("deleteModal", () => ({
+          deleteId: "",
+          mode: "",
+          init() {
+            Alpine.effect(() => {
+              const { idToDelete, deleteMode } = Alpine.store("app");
+              this.mode = deleteMode;
+              this.deleteId = idToDelete;
+            });
+          },
+          deleteObject() {
+            if (this.mode === "video") {
+              this.$store.app.deleteVideo(this.deleteId);
+            } else {
+              this.$store.app.deleteLoop(this.deleteId);
+            }
+            this.closeModal();
+          },
+          closeModal() {
+            const videoModal = bootstrap.Modal.getInstance(
+              document.getElementById("deleteModal")
+            );
+            videoModal.hide();
+          },
+        }));
+
+        Alpine.data("loopModal", () => ({
+          loopModalTitle: "Add A Loop",
+          loopId: "",
+          loopTitle: "",
+          loopStart: "",
+          loopEnd: "",
+          editMode: false,
+          invalidTitle: "",
+          invalidStart: "",
+          invalidEnd: "",
+          get invalid() {
+            return this.invalidTitle || this.invalidStart || this.invalidEnd;
+          },
+          init() {
+            Alpine.effect(() => {
+              const loop = Alpine.store("app").loopToEdit;
+              if (loop === null) {
+                this.loopId = "";
+                this.loopTitle = "";
+                this.loopStart = "";
+                this.loopModalTitle = "Add A Loop";
+                this.editMode = false;
+              } else {
+                this.loopId = loop.id;
+                this.loopTitle = loop.title;
+                this.loopStart = loop.start;
+                this.loopEnd = loop.end;
+                this.loopModalTitle = "Edit Loop";
+                this.editMode = true;
+              }
+            });
+          },
+          validate() {
+            this.invalidTitle = "";
+            this.invalidStart = "";
+            this.invalidEnd = "";
+
+            if (this.loopTitle.trim() === "") {
+              this.invalidTitle = "Please add a loop title";
+            }
+            if (isNaN(parseFloat(this.loopStart))) {
+              this.invalidStart = "Please add a valid loop start time";
+            }
+
+            if (isNaN(parseFloat(this.loopEnd))) {
+              this.invalidEnd = "Please add a valid loop end time";
+            }
+
+            if (parseFloat(this.loopStart) >= parseFloat(this.loopEnd)) {
+              this.invalidStart =
+                "Loop start time should be before loop end time";
+            }
+
+            if (parseFloat(this.loopStart) < 0) {
+              this.invalidStart =
+                "Loop start time must be greater than or equal to zero";
+            }
+
+            if (parseFloat(this.loopEnd) <= 0) {
+              this.invalidEnd = "Loop end time must be greater than 0";
+            }
+
+            if (
+              parseFloat(this.loopEnd) >
+              this.$store.app.getActiveVideoDuration()
+            ) {
+              this.invalidEnd =
+                "Loop end time should be less than the video duration";
+            }
+
+            return !this.invalid;
+          },
+          addLoop() {
+            if (!this.validate()) {
+              return;
+            }
+
+            this.$store.app.addLoop({
+              id: generateUID(),
+              title: this.loopTitle,
+              start: this.loopStart,
+              end: this.loopEnd,
+            });
+
+            this.closeModal();
+          },
+          updateLoop() {
+            if (!this.validate()) {
+              return;
+            }
+
+            this.$store.app.updateLoop({
+              id: this.loopId,
+              title: this.loopTitle,
+              start: this.loopStart,
+              end: this.loopEnd,
+            });
+
+            this.closeModal();
+          },
+          closeModal() {
+            this.loopTitle = "";
+            this.loopStart = "";
+            this.loopEnd = "";
+            this.invalidTitle = "";
+            this.invalidStart = "";
+            this.invalidEnd = "";
+
+            const loopModal = bootstrap.Modal.getInstance(
+              document.getElementById("loopModal")
+            );
+            loopModal.hide();
+          },
+        }));
+
+        Alpine.store("app", {
+          player: null,
+          videos: [],
+          ready: false,
+          activeVideoId: null,
+          videoToEdit: null,
+          idToDelete: null,
+          deleteMode: "",
+          loopToEdit: null,
+          activeLoop: null,
+          playbackSpeed: 1,
+          get loops() {
+            return (
+              this.videos.find((video) => video.id === this.activeVideoId) || {}
+            ).loops;
+          },
+          init() {
+            if (location.search) {
+              const urlParams = new URLSearchParams(location.search);
+              const appState = urlParams.get("x");
+              this.videos = JSON.parse(atob(appState));
+            }
+            Alpine.effect(() => {
+              const speed = Alpine.store("app").playbackSpeed;
+              const videos = Alpine.store("app").videos;
+              window.history.replaceState(
+                null,
+                null,
+                `${videos.length ? "?x=" + btoa(JSON.stringify(videos)) : ""}`
+              );
+              this.setPlaybackSpeed(speed);
+            });
+          },
+          addVideo(video) {
+            this.videos = [...this.videos, video];
+          },
+          updateVideo(video) {
+            const videoToUpdate = this.videos.find((v) => v.id === video.id);
+            videoToUpdate.title = video.title;
+            videoToUpdate.url = video.url;
+            this.videoToEdit = null;
+          },
+          deleteVideo(videoId) {
+            this.videos = this.videos.filter((video) => video.id !== videoId);
+            if (videoId === this.activeVideoId) {
+              this.activeVideoId = null;
+            }
+          },
+          deleteLoop(loopId) {
+            const video = this.videos.find(
+              (video) => video.id === this.activeVideoId
+            );
+            video.loops = video.loops.filter((loop) => loop.id !== loopId);
+          },
+          markVideoForEdit(video) {
+            this.videoToEdit = video;
+          },
+          markVideoForDelete(video) {
+            this.idToDelete = video.id;
+            this.deleteMode = "video";
+          },
+          markLoopForEdit(loop) {
+            this.loopToEdit = loop;
+          },
+          markLoopForDelete(loop) {
+            this.idToDelete = loop.id;
+            this.deleteMode = "loop";
+          },
+          selectVideo(videoId) {
+            this.ready = false;
+            this.activeVideoId = videoId;
+            console.log("SELECTING VIDEO", this.activeVideoId);
+            if (this.player) {
+              this.player.loadVideoById(this.activeVideoId, 0);
+            } else {
+              this.player = new YT.Player("player", {
+                height: "315",
+                width: "560",
+                videoId: this.activeVideoId,
+                playerVars: {
+                  autoplay: 0,
+                  controls: 1,
+                  modestbranding: 1,
+                  start: 0,
+                },
+                events: {
+                  onReady: (event) => {
+                    this.ready = true;
+                  },
+                  onStateChange: (event) => {
+                    if (
+                      event.data === YT.PlayerState.ENDED &&
+                      this.activeLoop
+                    ) {
+                      this.player.seekTo(this.activeLoop.start);
+                    }
+                  },
+                },
+              });
+            }
+          },
+          getActiveVideoDuration() {
+            return this.player.getDuration();
+          },
+          addLoop(loop) {
+            this.loops.push(loop);
+          },
+          updateLoop(loop) {
+            const activeVideo = this.videos.find((video) => this.activeVideoId);
+            const loopToUpdate = activeVideo.loops.find(
+              (l) => l.id === loop.id
+            );
+            loopToUpdate.title = loop.title;
+            loopToUpdate.start = loop.start;
+            loopToUpdate.end = loop.end;
+            this.loopToEdit = null;
+          },
+          selectLoop(loop) {
+            this.activeLoop = loop;
+            this.player.cueVideoById({
+              videoId: this.activeVideoId,
+              startSeconds: this.activeLoop.start,
+              endSeconds: this.activeLoop.end,
+            });
+          },
+          setPlaybackSpeed(speed) {
+            if (this.ready) {
+              this.player.setPlaybackRate(parseFloat(speed));
+            }
+          },
+        });
+      });
+    </script>
+    <style>
+      #player-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 56.25%; /* 16:9 aspect ratio (e.g., for a 560px width and 315px height) */
+      }
+
+      #player {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .pointer {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">Youtube Looper</a>
+      </div>
+    </nav>
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col">
+          <div>
+            <ul class="list-unstyled">
+              <template x-data x-for="video in $store.app.videos">
+                <li class="pointer">
+                  <div class="row">
+                    <div
+                      class="col-10"
+                      @click="$store.app.selectVideo(video.id)"
+                    >
+                      <p
+                        x-text="video.title"
+                        class="text-nowrap text-truncate"
+                      ></p>
+                    </div>
+                    <div class="col text-end">
+                      <div class="dropdown">
+                        <span
+                          style="padding: 1px 6px"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                        >
+                          <i class="bi bi-three-dots-vertical"></i>
+                        </span>
+                        <ul class="dropdown-menu">
+                          <li>
+                            <a
+                              class="dropdown-item"
+                              href="#"
+                              @click="$store.app.markVideoForEdit(video)"
+                              data-bs-toggle="modal"
+                              data-bs-target="#videoModal"
+                              >Edit</a
+                            >
+                          </li>
+                          <li>
+                            <a
+                              class="dropdown-item"
+                              href="#"
+                              @click="$store.app.markVideoForDelete(video)"
+                              data-bs-toggle="modal"
+                              data-bs-target="#deleteModal"
+                              >Delete</a
+                            >
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              </template>
+            </ul>
+            <button
+              class="btn btn-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#videoModal"
+            >
+              Add a video
+            </button>
+
+            <div
+              x-data="videoModal"
+              class="modal fade"
+              id="videoModal"
+              tabindex="-1"
+              aria-labelledby="videoModal"
+              aria-hidden="true"
+            >
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h1 class="modal-title fs-5" x-text="videoModalTitle"></h1>
+                    <button
+                      type="button"
+                      class="btn-close"
+                      @click="closeModal"
+                      aria-label="Close"
+                    ></button>
+                  </div>
+                  <div class="modal-body">
+                    <form>
+                      <div class="mb-3">
+                        <label for="youtubeVideoTitle" class="form-label"
+                          >Title</label
+                        >
+                        <div class="mb-3">
+                          <input
+                            type="text"
+                            :class="`form-control ${invalidVideoTitle? 'is-invalid': ''}`"
+                            id="youtubeVideoTitle"
+                            x-model="videoTitle"
+                          />
+                          <div class="invalid-feedback">
+                            Please provide a video title
+                          </div>
+                        </div>
+                        <div class="mb-3">
+                          <label for="youtubeVideoUrl" class="form-label"
+                            >Youtube Video URL</label
+                          >
+                          <input
+                            type="text"
+                            :class="`form-control ${invalidVideoUrl? 'is-invalid': ''}`"
+                            id="youtubeVideoUrl"
+                            x-model="videoUrl"
+                          />
+                          <div class="invalid-feedback">
+                            Please provide a valid youtube video URL
+                          </div>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                  <div class="modal-footer">
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      @click="closeModal"
+                    >
+                      Close
+                    </button>
+                    <button
+                      x-show="!editMode"
+                      type="button"
+                      class="btn btn-primary"
+                      @click="addVideo"
+                    >
+                      Add
+                    </button>
+                    <button
+                      x-show="editMode"
+                      type="button"
+                      class="btn btn-primary"
+                      @click="editVideo"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div
+              x-data="deleteModal"
+              class="modal fade"
+              id="deleteModal"
+              tabindex="-1"
+              aria-labelledby="deleteModal"
+              aria-hidden="true"
+            >
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h1
+                      class="modal-title fs-5"
+                      x-text="`Delete ${mode === 'video'? 'Video': 'Loop'}?`"
+                    ></h1>
+                    <button
+                      type="button"
+                      class="btn-close"
+                      data-bs-toggle="modal"
+                      data-bs-target="#deleteModal"
+                      aria-label="Close"
+                    ></button>
+                  </div>
+                  <div class="modal-body">
+                    <p
+                      x-text="`Are you sure you want to delete this ${mode === 'video'? 'video': 'loop'}?`"
+                    ></p>
+                  </div>
+                  <div class="modal-footer">
+                    <button
+                      type="button"
+                      class="btn btn-secondary"
+                      data-bs-toggle="modal"
+                      data-bs-target="#deleteModal"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-danger"
+                      @click="deleteObject"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-8">
+          <div x-data x-show="$store.app.activeVideoId !== null">
+            <div id="player-container">
+              <div id="player"></div>
+            </div>
+            <div id="nav" x-data>
+              <div class="row">
+                <div class="col">
+                  <label
+                    for="playback-speed"
+                    class="form-label"
+                    x-text="`Playback Speed (${$store.app.playbackSpeed})`"
+                  ></label>
+                  <input
+                    type="range"
+                    class="form-range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    id="playback-speed"
+                    x-model="$store.app.playbackSpeed"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <template x-data x-if="$store.app.loops !== undefined">
+            <div x-data id="loops">
+              <ul class="list-unstyled">
+                <template x-data x-for="loop in $store.app.loops">
+                  <li class="pointer">
+                    <div class="row">
+                      <div class="col-10" @click="$store.app.selectLoop(loop)">
+                        <p
+                          x-text="`${loop.title} (${loop.start} - ${loop.end})`"
+                          class="text-nowrap text-truncate"
+                        ></p>
+                      </div>
+                      <div class="col text-end">
+                        <div class="dropdown">
+                          <span
+                            style="padding: 1px 6px"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                          >
+                            <i class="bi bi-three-dots-vertical"></i>
+                          </span>
+                          <ul class="dropdown-menu">
+                            <li>
+                              <a
+                                class="dropdown-item"
+                                href="#"
+                                @click="$store.app.markLoopForEdit(loop)"
+                                data-bs-toggle="modal"
+                                data-bs-target="#loopModal"
+                                >Edit</a
+                              >
+                            </li>
+                            <li>
+                              <a
+                                class="dropdown-item"
+                                href="#"
+                                @click="$store.app.markLoopForDelete(loop)"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteModal"
+                                >Delete</a
+                              >
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                </template>
+              </ul>
+              <button
+                class="btn btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#loopModal"
+              >
+                Add a loop
+              </button>
+              <div
+                x-data="loopModal"
+                class="modal fade"
+                id="loopModal"
+                tabindex="-1"
+                aria-labelledby="loopModal"
+                aria-hidden="true"
+              >
+                <div class="modal-dialog">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h1 class="modal-title fs-5" x-text="loopModalTitle"></h1>
+                      <button
+                        type="button"
+                        class="btn-close"
+                        @click="closeModal"
+                        aria-label="Close"
+                      ></button>
+                    </div>
+                    <div class="modal-body">
+                      <form>
+                        <div class="mb-3">
+                          <label for="loop-title" class="form-label"
+                            >Title</label
+                          >
+                          <div class="mb-3">
+                            <input
+                              x-data
+                              type="text"
+                              :class="`form-control ${invalidTitle? 'is-invalid': ''}`"
+                              id="loop-title"
+                              x-model="loopTitle"
+                            />
+                            <div
+                              class="invalid-feedback"
+                              x-text="invalidTitle"
+                            ></div>
+                          </div>
+                          <div class="mb-3">
+                            <label for="start-time" class="form-label"
+                              >Start Time</label
+                            >
+                            <input
+                              x-data
+                              type="number"
+                              :class="`form-control ${invalidStart? 'is-invalid': ''}`"
+                              id="start-time"
+                              x-model="loopStart"
+                            />
+                            <div
+                              class="invalid-feedback"
+                              x-text="invalidStart"
+                            ></div>
+                          </div>
+                          <div class="mb-3">
+                            <label for="end-time" class="form-label"
+                              >End Time</label
+                            >
+                            <input
+                              x-data
+                              type="number"
+                              :class="`form-control ${invalidEnd? 'is-invalid': ''}`"
+                              id="end-time"
+                              x-model="loopEnd"
+                            />
+                            <div
+                              class="invalid-feedback"
+                              x-text="invalidEnd"
+                            ></div>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+                    <div class="modal-footer">
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        @click="closeModal"
+                      >
+                        Close
+                      </button>
+                      <button
+                        x-show="!editMode"
+                        type="button"
+                        class="btn btn-primary"
+                        @click="addLoop"
+                      >
+                        Add
+                      </button>
+                      <button
+                        x-show="editMode"
+                        type="button"
+                        class="btn btn-primary"
+                        @click="updateLoop"
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <!-- loop sidebar -->
+        </div>
+      </div>
+    </div>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>
