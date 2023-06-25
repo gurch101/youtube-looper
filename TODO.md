@@ -17,4 +17,5 @@
 - keep state in URL - DONE
 - fix ipad responsiveness - DONE
 - auto play loop on click - DONE
+- fix edit loop bug - DONE
 - create loops in bulk - provide start/end offset + loop size

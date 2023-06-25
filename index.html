@@ -378,7 +378,9 @@
             this.loops.push(loop);
           },
           updateLoop(loop) {
-            const activeVideo = this.videos.find((video) => this.activeVideoId);
+            const activeVideo = this.videos.find(
+              (video) => video.id === this.activeVideoId
+            );
             const loopToUpdate = activeVideo.loops.find(
               (l) => l.id === loop.id
             );
