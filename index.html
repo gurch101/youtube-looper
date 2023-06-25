@@ -389,11 +389,13 @@
           },
           selectLoop(loop) {
             this.activeLoop = loop;
+            this.player.seekTo(this.activeLoop.start);
             this.player.cueVideoById({
               videoId: this.activeVideoId,
               startSeconds: this.activeLoop.start,
               endSeconds: this.activeLoop.end,
             });
+            setTimeout(() => this.player.playVideo(), 100);
           },
           setPlaybackSpeed(speed) {
             if (this.ready) {
@@ -439,7 +441,7 @@
                 <li class="pointer">
                   <div class="row">
                     <div
-                      class="col-10"
+                      class="col-md-8 col-sm-6"
                       @click="$store.app.selectVideo(video.id)"
                     >
                       <p
@@ -657,7 +659,10 @@
                 <template x-data x-for="loop in $store.app.loops">
                   <li class="pointer">
                     <div class="row">
-                      <div class="col-10" @click="$store.app.selectLoop(loop)">
+                      <div
+                        class="col-md-8 col-sm-6"
+                        @click="$store.app.selectLoop(loop)"
+                      >
                         <p
                           x-text="`${loop.title} (${loop.start} - ${loop.end})`"
                           class="text-nowrap text-truncate"

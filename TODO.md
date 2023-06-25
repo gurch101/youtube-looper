@@ -15,4 +15,6 @@
 - edit loop - DONE
 - show loop start/end in title - DONE
 - keep state in URL - DONE
+- fix ipad responsiveness - DONE
+- auto play loop on click - DONE
 - create loops in bulk - provide start/end offset + loop size
