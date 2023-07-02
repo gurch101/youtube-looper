@@ -19,3 +19,6 @@
 - auto play loop on click - DONE
 - fix edit loop bug - DONE
 - create loops in bulk - provide start/end offset + loop size
+- single tap play/pause
+- fix edit loop bug 2 - DONE
+- set start time to pause time - DONE
